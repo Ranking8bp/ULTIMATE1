@@ -1481,6 +1481,66 @@ function pocketBall(b, pocket){
   }
   requestAnimationFrame(animatePocket);
 }
+function collideHardTableBounds(ball){
+  if(!ball || ball.pocketed) return false;
+
+  const {w,h}=dimensions();
+  const r=ballRadius();
+  const B=tableBounds();
+  const minX=B.left+r;
+  const maxX=B.right-r;
+  const minY=B.top+r;
+  const maxY=B.bottom-r;
+
+  // SEGURIDAD ABSOLUTA:
+  // pocketCheck() se ejecuta ANTES de esta función. Por tanto, si una bola
+  // entra en una tronera ya fue embocada y queda excluida aquí. Toda bola que
+  // siga en juego debe permanecer dentro del rectángulo físico de la mesa.
+  // No dejamos una "zona libre" alrededor de las troneras porque esa excepción
+  // era precisamente la que permitía que una bola escapara por una abertura sin
+  // haber sido capturada por pocketCheck().
+  const p=px(ball);
+  let hit=false;
+  const wb=(ball===balls[0]) ? whiteWallBounce : wallBounce;
+
+  if(p.x < minX){
+    ball.x=minX/w;
+    if(ball.vx<0) ball.vx=-ball.vx*wb;
+    else ball.vx=0;
+    hit=true;
+  }else if(p.x > maxX){
+    ball.x=maxX/w;
+    if(ball.vx>0) ball.vx=-ball.vx*wb;
+    else ball.vx=0;
+    hit=true;
+  }
+
+  const p2=px(ball);
+  if(p2.y < minY){
+    ball.y=minY/h;
+    if(ball.vy<0) ball.vy=-ball.vy*wb;
+    else ball.vy=0;
+    hit=true;
+  }else if(p2.y > maxY){
+    ball.y=maxY/h;
+    if(ball.vy>0) ball.vy=-ball.vy*wb;
+    else ball.vy=0;
+    hit=true;
+  }
+
+  if(hit){
+    shotHadAnyCushionContact=true;
+    if(ball!==balls[0]){
+      shotHadObjectCushionContact=true;
+      shotObjectCushionBalls.add(ball);
+    }else{
+      shotHadCueCushionContact=true;
+      whiteGuideActive=false;
+    }
+  }
+  return hit;
+}
+
 function physics(dt){
   const {w,h}=dimensions();
   const r=ballRadius();
@@ -1614,48 +1674,10 @@ function physics(dt){
     // posición anterior para localizar el contacto continuo. Esto elimina el
     // doble rebote que hacía que las bolas se desviaran o parecieran saltar.
     collideCustomSegments(b, previousPx);
-
-    // BARRERA DE SEGURIDAD: impide que una bola pueda atravesar las bandas
-    // aunque un segmento personalizado no haya detectado el cruce por la
-    // velocidad del tiro. Las troneras siguen siendo gestionadas primero por
-    // pocketCheck(), por lo que sus entradas no quedan bloqueadas.
-    {
-      const safeR = ballRadius();
-      const minX = B.left + safeR;
-      const maxX = B.right - safeR;
-      const minY = B.top + safeR;
-      const maxY = B.bottom - safeR;
-      let q = px(b);
-
-      if(q.x < minX){
-        b.x = minX / w;
-        if(b.vx < 0) b.vx = -b.vx * (b===balls[0] ? whiteWallBounce : wallBounce);
-        shotHadAnyCushionContact = true;
-        if(b===balls[0]) shotHadCueCushionContact = true;
-        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
-      } else if(q.x > maxX){
-        b.x = maxX / w;
-        if(b.vx > 0) b.vx = -b.vx * (b===balls[0] ? whiteWallBounce : wallBounce);
-        shotHadAnyCushionContact = true;
-        if(b===balls[0]) shotHadCueCushionContact = true;
-        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
-      }
-
-      q = px(b);
-      if(q.y < minY){
-        b.y = minY / h;
-        if(b.vy < 0) b.vy = -b.vy * (b===balls[0] ? whiteWallBounce : wallBounce);
-        shotHadAnyCushionContact = true;
-        if(b===balls[0]) shotHadCueCushionContact = true;
-        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
-      } else if(q.y > maxY){
-        b.y = maxY / h;
-        if(b.vy > 0) b.vy = -b.vy * (b===balls[0] ? whiteWallBounce : wallBounce);
-        shotHadAnyCushionContact = true;
-        if(b===balls[0]) shotHadCueCushionContact = true;
-        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
-      }
-    }
+    // Barrera física absoluta de seguridad: incluso si un segmento personalizado
+    // está mal calibrado o una colisión entre bolas empuja una bola demasiado
+    // lejos en un subpaso, nunca puede escapar del área jugable.
+    collideHardTableBounds(b);
 
     let p=px(b);
 
@@ -1845,6 +1867,10 @@ function physics(dt){
       firstShotTarget.vy=firstShotExitNY*tv;
     }
   }
+
+  // Segunda barrera de seguridad después de resolver choques entre bolas.
+  // Esto impide que una colisión fuerte pueda sacar una bola fuera de la mesa.
+  for(const b of balls){ if(!b.pocketed) collideHardTableBounds(b); }
 
   // Segunda pasada de estabilidad: mata cualquier velocidad residual mínima
   // producida por una colisión en el mismo subpaso.
