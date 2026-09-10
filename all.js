@@ -11,6 +11,9 @@ document.querySelectorAll('.nav button').forEach(btn=>{
 });
 
 const wrap = document.querySelector('.table-wrap');
+// Mundo físico fijo: la lógica del juego nunca cambia con el zoom, WebView o tamaño de pantalla.
+const PHYSICS_WORLD_W = 1390;
+const PHYSICS_WORLD_H = 766;
 const cueImg = document.querySelector('.cue-real');
 const cueHolder = document.querySelector('.cue-holder');
 const aimLine = document.querySelector('.aim-line');
@@ -268,13 +271,18 @@ function setupBalls(){
 }
 
 function dimensions(){
-  return {w:wrap.clientWidth,h:wrap.clientHeight};
+  return {w:PHYSICS_WORLD_W,h:PHYSICS_WORLD_H};
+}
+
+function visualScale(){
+  const rect=wrap.getBoundingClientRect();
+  return {sx:rect.width/PHYSICS_WORLD_W, sy:rect.height/PHYSICS_WORLD_H};
 }
 
 function ballRadius(){
-  const sample = ballEls.find(e => getComputedStyle(e).display !== 'none');
-  const actual = sample ? sample.getBoundingClientRect().width / 2 : 0;
-  return actual > 0 ? actual : Math.max(13, dimensions().w*radiusRatio);
+  // Radio físico en coordenadas lógicas de 1390x766. La imagen visible
+  // se escala junto con .table-wrap, pero este valor NO cambia con el zoom.
+  return PHYSICS_WORLD_W * radiusRatio;
 }
 
 // Las nuevas bolas están recortadas al contorno de la esfera, sin márgenes
@@ -769,8 +777,12 @@ function setWhitePlacementVisuals(active){
 
 function updatePointerPosition(e){
   const r=wrap.getBoundingClientRect();
-  pointer.x=e.clientX-r.left;
-  pointer.y=e.clientY-r.top;
+  // Convertimos coordenadas de pantalla a las coordenadas físicas fijas.
+  // Esto evita que el zoom del navegador/WebView cambie la geometría del tiro.
+  const sx=r.width/PHYSICS_WORLD_W || 1;
+  const sy=r.height/PHYSICS_WORLD_H || 1;
+  pointer.x=(e.clientX-r.left)/sx;
+  pointer.y=(e.clientY-r.top)/sy;
 }
 
 // La blanca tiene su propio receptor de arrastre durante la recolocación.
@@ -1481,66 +1493,6 @@ function pocketBall(b, pocket){
   }
   requestAnimationFrame(animatePocket);
 }
-function collideHardTableBounds(ball){
-  if(!ball || ball.pocketed) return false;
-
-  const {w,h}=dimensions();
-  const r=ballRadius();
-  const B=tableBounds();
-  const minX=B.left+r;
-  const maxX=B.right-r;
-  const minY=B.top+r;
-  const maxY=B.bottom-r;
-
-  // SEGURIDAD ABSOLUTA:
-  // pocketCheck() se ejecuta ANTES de esta función. Por tanto, si una bola
-  // entra en una tronera ya fue embocada y queda excluida aquí. Toda bola que
-  // siga en juego debe permanecer dentro del rectángulo físico de la mesa.
-  // No dejamos una "zona libre" alrededor de las troneras porque esa excepción
-  // era precisamente la que permitía que una bola escapara por una abertura sin
-  // haber sido capturada por pocketCheck().
-  const p=px(ball);
-  let hit=false;
-  const wb=(ball===balls[0]) ? whiteWallBounce : wallBounce;
-
-  if(p.x < minX){
-    ball.x=minX/w;
-    if(ball.vx<0) ball.vx=-ball.vx*wb;
-    else ball.vx=0;
-    hit=true;
-  }else if(p.x > maxX){
-    ball.x=maxX/w;
-    if(ball.vx>0) ball.vx=-ball.vx*wb;
-    else ball.vx=0;
-    hit=true;
-  }
-
-  const p2=px(ball);
-  if(p2.y < minY){
-    ball.y=minY/h;
-    if(ball.vy<0) ball.vy=-ball.vy*wb;
-    else ball.vy=0;
-    hit=true;
-  }else if(p2.y > maxY){
-    ball.y=maxY/h;
-    if(ball.vy>0) ball.vy=-ball.vy*wb;
-    else ball.vy=0;
-    hit=true;
-  }
-
-  if(hit){
-    shotHadAnyCushionContact=true;
-    if(ball!==balls[0]){
-      shotHadObjectCushionContact=true;
-      shotObjectCushionBalls.add(ball);
-    }else{
-      shotHadCueCushionContact=true;
-      whiteGuideActive=false;
-    }
-  }
-  return hit;
-}
-
 function physics(dt){
   const {w,h}=dimensions();
   const r=ballRadius();
@@ -1674,10 +1626,6 @@ function physics(dt){
     // posición anterior para localizar el contacto continuo. Esto elimina el
     // doble rebote que hacía que las bolas se desviaran o parecieran saltar.
     collideCustomSegments(b, previousPx);
-    // Barrera física absoluta de seguridad: incluso si un segmento personalizado
-    // está mal calibrado o una colisión entre bolas empuja una bola demasiado
-    // lejos en un subpaso, nunca puede escapar del área jugable.
-    collideHardTableBounds(b);
 
     let p=px(b);
 
@@ -1867,10 +1815,6 @@ function physics(dt){
       firstShotTarget.vy=firstShotExitNY*tv;
     }
   }
-
-  // Segunda barrera de seguridad después de resolver choques entre bolas.
-  // Esto impide que una colisión fuerte pueda sacar una bola fuera de la mesa.
-  for(const b of balls){ if(!b.pocketed) collideHardTableBounds(b); }
 
   // Segunda pasada de estabilidad: mata cualquier velocidad residual mínima
   // producida por una colisión en el mismo subpaso.
