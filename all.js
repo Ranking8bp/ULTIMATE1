@@ -1615,6 +1615,48 @@ function physics(dt){
     // doble rebote que hacía que las bolas se desviaran o parecieran saltar.
     collideCustomSegments(b, previousPx);
 
+    // BARRERA DE SEGURIDAD: impide que una bola pueda atravesar las bandas
+    // aunque un segmento personalizado no haya detectado el cruce por la
+    // velocidad del tiro. Las troneras siguen siendo gestionadas primero por
+    // pocketCheck(), por lo que sus entradas no quedan bloqueadas.
+    {
+      const safeR = ballRadius();
+      const minX = B.left + safeR;
+      const maxX = B.right - safeR;
+      const minY = B.top + safeR;
+      const maxY = B.bottom - safeR;
+      let q = px(b);
+
+      if(q.x < minX){
+        b.x = minX / w;
+        if(b.vx < 0) b.vx = -b.vx * (b===balls[0] ? whiteWallBounce : wallBounce);
+        shotHadAnyCushionContact = true;
+        if(b===balls[0]) shotHadCueCushionContact = true;
+        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
+      } else if(q.x > maxX){
+        b.x = maxX / w;
+        if(b.vx > 0) b.vx = -b.vx * (b===balls[0] ? whiteWallBounce : wallBounce);
+        shotHadAnyCushionContact = true;
+        if(b===balls[0]) shotHadCueCushionContact = true;
+        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
+      }
+
+      q = px(b);
+      if(q.y < minY){
+        b.y = minY / h;
+        if(b.vy < 0) b.vy = -b.vy * (b===balls[0] ? whiteWallBounce : wallBounce);
+        shotHadAnyCushionContact = true;
+        if(b===balls[0]) shotHadCueCushionContact = true;
+        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
+      } else if(q.y > maxY){
+        b.y = maxY / h;
+        if(b.vy > 0) b.vy = -b.vy * (b===balls[0] ? whiteWallBounce : wallBounce);
+        shotHadAnyCushionContact = true;
+        if(b===balls[0]) shotHadCueCushionContact = true;
+        else { shotHadObjectCushionContact = true; shotObjectCushionBalls.add(b); }
+      }
+    }
+
     let p=px(b);
 
   }
