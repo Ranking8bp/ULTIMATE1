@@ -749,6 +749,52 @@ window.CUSTOM_LIMITS_ONLY = true;
   #whitePhysicsEditor { display:none !important; }
 </style>
 
+
+<style id="fixed-scene-layout">
+/* ESCENA FIJA: toda la interfaz del juego se diseña internamente en 1390x766.
+   El navegador/WebView solo escala la escena completa. */
+html,body{
+  overflow:hidden !important;
+  width:100% !important; height:100% !important;
+}
+.main{
+  position:relative !important;
+  width:100vw !important; height:100vh !important;
+  min-width:0 !important; min-height:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  display:block !important;
+  overflow:hidden !important;
+}
+.table-wrap{
+  position:absolute !important;
+  left:50% !important; top:50% !important;
+  width:1390px !important; height:766px !important;
+  aspect-ratio:auto !important;
+  margin:0 !important;
+  transform-origin:50% 50% !important;
+  transform:translate(-50%,-50%) scale(var(--game-scale,1)) !important;
+}
+.scoreboard-reference{
+  position:absolute !important;
+  left:50% !important; top:5px !important;
+  width:1280px !important;
+  max-width:none !important;
+  transform:translateX(-50%) !important;
+}
+.turn-timer{
+  left:50% !important;
+  width:430px !important;
+  max-width:none !important;
+}
+.cue-holder{
+  position:absolute !important;
+  width:82px !important; height:640px !important;
+}
+#powerControl{
+  position:absolute !important;
+}
+</style>
 </head>
 <body>
 <div id="gameOverOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Fin de la partida">
@@ -3715,5 +3761,27 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 </script>
 
+
+<script id="fixed-scene-layout-script">
+(function(){
+  function applyFixedSceneScale(){
+    const root=document.documentElement;
+    const main=document.querySelector('.main');
+    const scene=document.querySelector('.table-wrap');
+    if(!main || !scene) return;
+    const W=1390, H=766;
+    const vw=window.innerWidth || document.documentElement.clientWidth || W;
+    const vh=window.innerHeight || document.documentElement.clientHeight || H;
+    const scale=Math.min(vw/W, vh/H);
+    root.style.setProperty('--game-scale', String(scale));
+    // La escena se escala como una sola pieza. No se cambia ninguna coordenada interna.
+    scene.style.setProperty('--game-scale', String(scale));
+  }
+  window.addEventListener('resize',applyFixedSceneScale,{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(applyFixedSceneScale,50),{passive:true});
+  document.addEventListener('DOMContentLoaded',applyFixedSceneScale);
+  applyFixedSceneScale();
+})();
+</script>
 </body>
 </html>
