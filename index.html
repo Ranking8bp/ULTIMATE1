@@ -3825,23 +3825,39 @@ document.addEventListener('DOMContentLoaded',()=>{
     main.appendChild(scene);
   }
 
+  function getRealViewport(){
+    /* Chrome Android puede mantener innerHeight/visualViewport.height con la
+       altura del layout viewport aunque la barra del navegador esté visible.
+       100dvh mide el área visual REAL disponible para la página. */
+    let vw=window.innerWidth||SCALE_W;
+    let vh=window.innerHeight||SCALE_H;
+    if(window.CSS&&CSS.supports&&CSS.supports('height','100dvh')){
+      const probe=document.createElement('div');
+      probe.style.cssText='position:fixed;left:0;top:0;width:100dvw;height:100dvh;visibility:hidden;pointer-events:none;z-index:-1;';
+      document.body.appendChild(probe);
+      const r=probe.getBoundingClientRect();
+      if(r.width>0) vw=r.width;
+      if(r.height>0) vh=r.height;
+      probe.remove();
+    }
+    const vv=window.visualViewport;
+    if(vv){
+      vw=Math.min(vw,vv.width||vw);
+      vh=Math.min(vh,vv.height||vh);
+    }
+    return {vw,vh};
+  }
+
   function applyFixedSceneScale(){
     buildMasterScene();
-
     const root=document.documentElement;
     const main=document.querySelector('.main');
     const scene=document.querySelector('.game-scene');
-    if(!main || !scene) return;
-
-    /* innerWidth/innerHeight son el área real disponible del navegador/WebView.
-       Se usa el menor factor para que los 1390x766 entren COMPLETOS,
-       especialmente en celular horizontal. */
-    const vw=window.visualViewport?.width || window.innerWidth || SCALE_W;
-    const vh=window.visualViewport?.height || window.innerHeight || SCALE_H;
-    const scale=Math.min(vw/SCALE_W, vh/SCALE_H);
-
-    root.style.setProperty('--game-scale', String(scale));
-    scene.style.setProperty('--game-scale', String(scale));
+    if(!main||!scene) return;
+    const {vw,vh}=getRealViewport();
+    const scale=Math.min(vw/SCALE_W,vh/SCALE_H);
+    root.style.setProperty('--game-scale',String(scale));
+    scene.style.setProperty('--game-scale',String(scale));
   }
 
   window.addEventListener('resize',applyFixedSceneScale,{passive:true});
