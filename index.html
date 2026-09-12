@@ -751,11 +751,14 @@ window.CUSTOM_LIMITS_ONLY = true;
 
 
 <style id="fixed-scene-layout">
-/* ESCENA FIJA: toda la interfaz del juego se diseña internamente en 1390x766.
-   El navegador/WebView solo escala la escena completa. */
+/* ESCENA ÚNICA RESPONSIVA:
+   Todo el juego visible se diseña internamente en 1390x766 y se escala
+   como una sola pieza para que en celular horizontal NUNCA se corte. */
 html,body{
   overflow:hidden !important;
   width:100% !important; height:100% !important;
+  margin:0 !important;
+  overscroll-behavior:none !important;
 }
 .main{
   position:relative !important;
@@ -765,7 +768,25 @@ html,body{
   margin:0 !important;
   display:block !important;
   overflow:hidden !important;
+  touch-action:none !important;
 }
+
+/* Contenedor maestro: marcador + mesa + taco + fuerza.
+   Se escala desde el centro usando el mismo factor calculado por JS. */
+.game-scene{
+  position:absolute !important;
+  left:50% !important;
+  top:50% !important;
+  width:1390px !important;
+  height:766px !important;
+  margin:0 !important;
+  padding:0 !important;
+  overflow:visible !important;
+  transform-origin:50% 50% !important;
+  transform:translate(-50%,-50%) scale(var(--game-scale,1)) !important;
+}
+
+/* La mesa ya NO se escala por separado: la escala la aplica .game-scene. */
 .table-wrap{
   position:absolute !important;
   left:50% !important; top:50% !important;
@@ -773,8 +794,10 @@ html,body{
   aspect-ratio:auto !important;
   margin:0 !important;
   transform-origin:50% 50% !important;
-  transform:translate(-50%,-50%) scale(var(--game-scale,1)) !important;
+  transform:translate(-50%,-50%) !important;
 }
+
+/* Elementos que ahora viven dentro de la escena maestra. */
 .scoreboard-reference{
   position:absolute !important;
   left:50% !important; top:5px !important;
@@ -793,6 +816,14 @@ html,body{
 }
 #powerControl{
   position:absolute !important;
+}
+</style>
+
+<style id="mobile-landscape-fit">
+/* En pantallas muy bajas se conserva la escena completa y se evita cualquier
+   scroll o recorte causado por barras del navegador. */
+@media (orientation:landscape) and (max-height:850px){
+  html,body,.main{overflow:hidden !important;height:100% !important;}
 }
 </style>
 </head>
@@ -1765,8 +1796,11 @@ function setWhitePlacementVisuals(active){
 
 function updatePointerPosition(e){
   const r=wrap.getBoundingClientRect();
-  pointer.x=e.clientX-r.left;
-  pointer.y=e.clientY-r.top;
+  /* wrap pertenece a .game-scene, que puede estar escalado en móvil.
+     Convertimos la posición de pantalla a las coordenadas internas 1390x766. */
+  const scale=Math.max(0.0001,parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--game-scale'))||1);
+  pointer.x=(e.clientX-r.left)/scale;
+  pointer.y=(e.clientY-r.top)/scale;
 }
 
 // La blanca tiene su propio receptor de arrastre durante la recolocación.
@@ -3764,21 +3798,57 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 <script id="fixed-scene-layout-script">
 (function(){
+  const SCALE_W=1390, SCALE_H=766;
+
+  function buildMasterScene(){
+    const main=document.querySelector('.main');
+    if(!main || document.querySelector('.game-scene')) return;
+    const scene=document.createElement('div');
+    scene.className='game-scene';
+    scene.id='gameScene';
+
+    /* Solo estos elementos forman la escena visual escalable.
+       Los overlays de fin de partida y editores ocultos permanecen fuera. */
+    const selectors=[
+      '.scoreboard-reference',
+      '.turn-timer',
+      '.white-effect-panel',
+      '.cue-holder',
+      '.table-wrap',
+      '#powerControl'
+    ];
+
+    selectors.forEach(sel=>{
+      const el=main.querySelector(sel);
+      if(el) scene.appendChild(el);
+    });
+    main.appendChild(scene);
+  }
+
   function applyFixedSceneScale(){
+    buildMasterScene();
+
     const root=document.documentElement;
     const main=document.querySelector('.main');
-    const scene=document.querySelector('.table-wrap');
+    const scene=document.querySelector('.game-scene');
     if(!main || !scene) return;
-    const W=1390, H=766;
-    const vw=window.innerWidth || document.documentElement.clientWidth || W;
-    const vh=window.innerHeight || document.documentElement.clientHeight || H;
-    const scale=Math.min(vw/W, vh/H);
+
+    /* innerWidth/innerHeight son el área real disponible del navegador/WebView.
+       Se usa el menor factor para que los 1390x766 entren COMPLETOS,
+       especialmente en celular horizontal. */
+    const vw=window.visualViewport?.width || window.innerWidth || SCALE_W;
+    const vh=window.visualViewport?.height || window.innerHeight || SCALE_H;
+    const scale=Math.min(vw/SCALE_W, vh/SCALE_H);
+
     root.style.setProperty('--game-scale', String(scale));
-    // La escena se escala como una sola pieza. No se cambia ninguna coordenada interna.
     scene.style.setProperty('--game-scale', String(scale));
   }
+
   window.addEventListener('resize',applyFixedSceneScale,{passive:true});
-  window.addEventListener('orientationchange',()=>setTimeout(applyFixedSceneScale,50),{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(applyFixedSceneScale,80),{passive:true});
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize',applyFixedSceneScale,{passive:true});
+  }
   document.addEventListener('DOMContentLoaded',applyFixedSceneScale);
   applyFixedSceneScale();
 })();
